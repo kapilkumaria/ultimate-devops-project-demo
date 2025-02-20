@@ -1,4 +1,5 @@
 # Multistage Dockerfile
+
 # Stage 1
 # 1. Build the application
 

@@ -1,26 +1,31 @@
-# Copyright The OpenTelemetry Authors
-# SPDX-License-Identifier: Apache-2.0
-
-
+###############
+# Build Stage #
+###############
 FROM golang:1.22-alpine AS builder
 
-WORKDIR /usr/src/app/
+WORKDIR /usr/src/app
+COPY . .
 
-RUN --mount=type=cache,target=/go/pkg/mod/ \
-    --mount=type=bind,source=./src/checkout/go.sum,target=go.sum \
-    --mount=type=bind,source=./src/checkout/go.mod,target=go.mod \
-    go mod download
+RUN go mod download
+RUN go build -o checkout ./
 
-RUN --mount=type=cache,target=/go/pkg/mod/ \
-    --mount=type=cache,target=/root/.cache/go-build \
-    --mount=type=bind,rw,source=./src/checkout,target=. \
-    go build -ldflags "-s -w" -o /go/bin/checkout/ ./
+#################
+# Final Stage   #
+#################
+FROM alpine:latest AS release
 
-FROM alpine
+WORKDIR /usr/src/app
+COPY --from=builder /usr/src/app/checkout ./
 
-WORKDIR /usr/src/app/
+# -- REQUIRED ENVIRONMENT VARIABLES --
+ENV CHECKOUT_PORT=8089
+ENV SHIPPING_ADDR=http://shipping:50051
+ENV PRODUCT_CATALOG_ADDR=http://product-catalog:50051
+ENV CART_ADDR=http://cart:50051
+ENV CURRENCY_ADDR=http://currency:50051
+ENV EMAIL_ADDR=http://email:50051
+ENV PAYMENT_ADDR=http://payment:50051
+# (KAFKA_ADDR is optional unless you want Kafka connectivity)
 
-COPY --from=builder /go/bin/checkout/ ./
-
-EXPOSE ${CHECKOUT_PORT}
-ENTRYPOINT [ "./checkout" ]
+EXPOSE 8089
+ENTRYPOINT ["./checkout"]

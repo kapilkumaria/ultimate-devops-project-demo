@@ -1,8 +1,3 @@
-# Multistage Dockerfile
-
-# Stage 1
-# 1. Build the application
-
 FROM golang:1.22-alpine AS builder
 
 WORKDIR /usr/src/app
@@ -10,27 +5,17 @@ WORKDIR /usr/src/app
 COPY . .
 
 RUN go mod download
-
 RUN go build -o product-catalog ./
 
-# Stage 2
-# 2. Run the application
+##########################################################
 
 FROM alpine AS release
 
 WORKDIR /usr/src/app
 
 COPY ./products ./products
-
 COPY --from=builder /usr/src/app/product-catalog ./
 
 ENV PRODUCT_CATALOG_PORT=8088
-
-ENTRYPOINT ["./product-catalog"]
-
-
-
-
-
-
+ENTRYPOINT [ "./product-catalog" ]
 

@@ -1,35 +1,44 @@
-# Copyright The OpenTelemetry Authors
-# SPDX-License-Identifier: Apache-2.0
+# syntax=docker/dockerfile:1
 
-FROM --platform=${BUILDPLATFORM} mcr.microsoft.com/dotnet/sdk:8.0 AS builder
-ARG TARGETARCH
-ARG BUILD_CONFIGURATION=Release
-WORKDIR /src
-COPY ["/src/accounting/", "Accounting/"]
-COPY ["/pb/demo.proto", "Accounting/proto/"]
-RUN dotnet restore "./Accounting/Accounting.csproj" -r linux-$TARGETARCH
-WORKDIR "/src/Accounting"
+################################
+# 1. Build Stage (SDK Image)   #
+################################
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 
-RUN dotnet build "./Accounting.csproj" -r linux-$TARGETARCH -c $BUILD_CONFIGURATION -o /app/build
-
-# -----------------------------------------------------------------------------
-
-FROM builder AS publish
-ARG TARGETARCH
-ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./Accounting.csproj" -r linux-$TARGETARCH -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
-
-# -----------------------------------------------------------------------------
-
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
-USER app
 WORKDIR /app
-COPY --from=publish /app/publish .
 
-USER root
-RUN mkdir -p "/var/log/opentelemetry/dotnet"
-RUN chown app "/var/log/opentelemetry/dotnet"
-RUN chown app "/app/instrument.sh"
-USER app
+# Copy everything from the repo root into /app
+COPY . .
 
-ENTRYPOINT ["./instrument.sh", "dotnet", "Accounting.dll"]
+# Make sure the proto directory exists
+RUN mkdir -p src/accounting/proto
+
+# Copy demo.proto into accounting/proto
+RUN cp pb/demo.proto src/accounting/proto/demo.proto
+
+# Move into the accounting folder
+WORKDIR /app/src/accounting
+
+# Restore .NET dependencies
+RUN dotnet restore
+
+# Publish the project in Release mode to a folder named 'out'
+RUN dotnet publish -c Release -o /app/out
+
+#################################
+# 2. Runtime Stage (Slim Image) #
+#################################
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+WORKDIR /app
+
+# Set environment variable for Kafka address (update the value as needed)
+ENV KAFKA_ADDR=kafka:9092
+
+# Copy the published output from the build stage
+COPY --from=build /app/out ./
+
+# Optional: If it’s an ASP.NET Core app that listens on a port
+# EXPOSE 80
+
+# Run the Accounting DLL
+ENTRYPOINT ["dotnet", "Accounting.dll"]
